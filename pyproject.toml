@@ -1,0 +1,27 @@
+[project]
+name = "nhl-saves"
+version = "0.1.0"
+description = "Data application to track NHL goalie saves historically and project saves for the next game based on historical trends"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pandas>=2.3.3",
+    "plotly>=6.5.2",
+    "requests>=2.32.5",
+    "streamlit>=1.54.0",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.2",
+]
