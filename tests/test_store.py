@@ -49,8 +49,10 @@ TEAM_STATS_DICT = {
 
 
 def _make_goalie_df(player_id: int, n: int = 3) -> pd.DataFrame:
-    rows = [{**GOALIE_GAME, "player_id": player_id, "gameDate": f"2024-10-{10 + i:02d}"}
-            for i in range(n)]
+    rows = [
+        {**GOALIE_GAME, "player_id": player_id, "gameDate": f"2024-10-{10 + i:02d}"}
+        for i in range(n)
+    ]
     return pd.DataFrame(rows)
 
 
@@ -66,16 +68,20 @@ def test_is_fresh_missing():
 def test_is_fresh_stale():
     mock_stat = MagicMock()
     mock_stat.st_mtime = time.time() - 7200  # 2 hours ago
-    with patch.object(Path, "exists", return_value=True), \
-         patch.object(Path, "stat", return_value=mock_stat):
+    with (
+        patch.object(Path, "exists", return_value=True),
+        patch.object(Path, "stat", return_value=mock_stat),
+    ):
         assert _is_fresh(Path("some.parquet"), ttl=3600) is False
 
 
 def test_is_fresh_fresh():
     mock_stat = MagicMock()
     mock_stat.st_mtime = time.time() - 10  # 10 seconds ago
-    with patch.object(Path, "exists", return_value=True), \
-         patch.object(Path, "stat", return_value=mock_stat):
+    with (
+        patch.object(Path, "exists", return_value=True),
+        patch.object(Path, "stat", return_value=mock_stat),
+    ):
         assert _is_fresh(Path("some.parquet"), ttl=3600) is True
 
 
@@ -87,9 +93,11 @@ def test_is_fresh_fresh():
 def test_fetch_goalie_log_cache_hit():
     expected = _make_goalie_df(8480045)
     mock_client = MagicMock()
-    with patch("nhl_saves.store._is_fresh", return_value=True), \
-         patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")), \
-         patch("pandas.read_parquet", return_value=expected) as mock_read:
+    with (
+        patch("nhl_saves.store._is_fresh", return_value=True),
+        patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")),
+        patch("pandas.read_parquet", return_value=expected) as mock_read,
+    ):
         result = fetch_goalie_game_log(8480045, "20242025", client=mock_client)
         mock_read.assert_called_once()
         mock_client.get_player_game_log.assert_not_called()
@@ -100,9 +108,11 @@ def test_fetch_goalie_log_cache_miss():
     mock_client = MagicMock()
     mock_client.get_player_game_log.return_value = [GOALIE_GAME]
 
-    with patch("nhl_saves.store._is_fresh", return_value=False), \
-         patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")), \
-         patch("pandas.DataFrame.to_parquet"):
+    with (
+        patch("nhl_saves.store._is_fresh", return_value=False),
+        patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")),
+        patch("pandas.DataFrame.to_parquet"),
+    ):
         result = fetch_goalie_game_log(8480045, "20242025", client=mock_client)
 
     mock_client.get_player_game_log.assert_called_once_with(8480045, "20242025", 2)
@@ -120,9 +130,11 @@ def test_fetch_team_stats_wraps_dict():
     mock_client = MagicMock()
     mock_client.get_team_stats.return_value = TEAM_STATS_DICT
 
-    with patch("nhl_saves.store._is_fresh", return_value=False), \
-         patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")), \
-         patch("pandas.DataFrame.to_parquet"):
+    with (
+        patch("nhl_saves.store._is_fresh", return_value=False),
+        patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")),
+        patch("pandas.DataFrame.to_parquet"),
+    ):
         result = fetch_team_stats("BOS", "20242025", client=mock_client)
 
     assert len(result) == 1
@@ -143,9 +155,11 @@ def test_fetch_goalie_stats_paginates():
     mock_client = MagicMock()
     mock_client.get_goalie_stats.side_effect = [page1, page2]
 
-    with patch("nhl_saves.store._is_fresh", return_value=False), \
-         patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")), \
-         patch("pandas.DataFrame.to_parquet"):
+    with (
+        patch("nhl_saves.store._is_fresh", return_value=False),
+        patch("nhl_saves.store._raw_path", return_value=Path("dummy.parquet")),
+        patch("pandas.DataFrame.to_parquet"),
+    ):
         result = fetch_goalie_stats("20242025", client=mock_client)
 
     assert mock_client.get_goalie_stats.call_count == 2
@@ -161,10 +175,12 @@ def test_build_game_logs_combines():
     df1 = _make_goalie_df(1001, n=3)
     df2 = _make_goalie_df(1002, n=3)
 
-    with patch("nhl_saves.store.fetch_goalie_stats") as mock_bulk, \
-         patch("nhl_saves.store.fetch_goalie_game_log", side_effect=[df1, df2]), \
-         patch("pandas.DataFrame.to_parquet"), \
-         patch.object(Path, "mkdir"):
+    with (
+        patch("nhl_saves.store.fetch_goalie_stats") as mock_bulk,
+        patch("nhl_saves.store.fetch_goalie_game_log", side_effect=[df1, df2]),
+        patch("pandas.DataFrame.to_parquet"),
+        patch.object(Path, "mkdir"),
+    ):
         mock_bulk.return_value = pd.DataFrame({"playerId": [1001, 1002]})
         result = build_goalie_game_logs("20242025")
 
@@ -182,10 +198,12 @@ def test_build_features_opponent_context():
     logs["opponentAbbrev"] = "BOS"
     team_stats_df = pd.DataFrame([{**TEAM_STATS_DICT, "teamAbbrev": "BOS"}])
 
-    with patch("nhl_saves.store.build_goalie_game_logs", return_value=logs), \
-         patch("nhl_saves.store.fetch_team_stats", return_value=team_stats_df), \
-         patch("pandas.DataFrame.to_parquet"), \
-         patch.object(Path, "mkdir"):
+    with (
+        patch("nhl_saves.store.build_goalie_game_logs", return_value=logs),
+        patch("nhl_saves.store.fetch_team_stats", return_value=team_stats_df),
+        patch("pandas.DataFrame.to_parquet"),
+        patch.object(Path, "mkdir"),
+    ):
         result = build_goalie_features("20242025", player_ids=[1001])
 
     assert "opponent_shotsForPerGame" in result.columns
@@ -214,10 +232,12 @@ def test_build_features_rolling_avgs():
     logs = pd.DataFrame(rows)
     team_stats_df = pd.DataFrame([{**TEAM_STATS_DICT, "teamAbbrev": "BOS"}])
 
-    with patch("nhl_saves.store.build_goalie_game_logs", return_value=logs), \
-         patch("nhl_saves.store.fetch_team_stats", return_value=team_stats_df), \
-         patch("pandas.DataFrame.to_parquet"), \
-         patch.object(Path, "mkdir"):
+    with (
+        patch("nhl_saves.store.build_goalie_game_logs", return_value=logs),
+        patch("nhl_saves.store.fetch_team_stats", return_value=team_stats_df),
+        patch("pandas.DataFrame.to_parquet"),
+        patch.object(Path, "mkdir"),
+    ):
         result = build_goalie_features(
             "20242025", player_ids=[1001], rolling_windows=[5]
         )

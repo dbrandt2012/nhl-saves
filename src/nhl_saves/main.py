@@ -53,9 +53,7 @@ def load_goalie_log(player_id: int, season: str) -> pd.DataFrame:
 @st.cache_data(ttl=3600)
 def load_all_goalie_logs(season: str) -> pd.DataFrame:
     """Load combined goalie game logs, reading the processed cache if available."""
-    processed_path = (
-        Path("data/processed/goalie_game_logs") / f"{season}_2.parquet"
-    )
+    processed_path = Path("data/processed/goalie_game_logs") / f"{season}_2.parquet"
     if processed_path.exists():
         return pd.read_parquet(processed_path)
     return build_goalie_game_logs(season)
@@ -77,30 +75,43 @@ def stat_block(
     stat_dict: dict,
     label_map: dict | None = None,
     decimals: int = 3,
+    pct: bool = False,
 ) -> None:
     """Render metric cards for a stat's season and last-N windows.
 
     stat_dict shape: {"season": {median, p25, p75, n}, "last_n": {...}}
     label_map maps dict keys to display labels (ordered).
+    pct=True multiplies values by 100 and appends a "%" suffix.
     """
     if label_map is None:
         label_map = {"last_n": "Last 5 Games", "season": "Full Season"}
+
+    multiplier = 100 if pct else 1
+    suffix = "%" if pct else ""
+    display_decimals = 1 if pct else decimals
 
     cols = st.columns(len(label_map))
     for col, (key, window_label) in zip(cols, label_map.items()):
         d = stat_dict.get(key, {})
         median = d.get("median", float("nan"))
         n = d.get("n", 0)
-        col.metric(window_label, _fmt(median, decimals), f"n={n}")
+        col.metric(
+            window_label,
+            f"{_fmt(median * multiplier, display_decimals)}{suffix}",
+            f"n={n}",
+        )
 
     with st.expander("Percentile detail"):
         detail_cols = st.columns(len(label_map))
         for col, (key, window_label) in zip(detail_cols, label_map.items()):
             d = stat_dict.get(key, {})
             col.write(f"**{window_label}**")
-            col.write(f"p25: {_fmt(d.get('p25', float('nan')), decimals)}")
-            col.write(f"Median: {_fmt(d.get('median', float('nan')), decimals)}")
-            col.write(f"p75: {_fmt(d.get('p75', float('nan')), decimals)}")
+            p25 = _fmt(d.get("p25", float("nan")) * multiplier, display_decimals)
+            med = _fmt(d.get("median", float("nan")) * multiplier, display_decimals)
+            p75 = _fmt(d.get("p75", float("nan")) * multiplier, display_decimals)
+            col.write(f"p25: {p25}{suffix}")
+            col.write(f"Median: {med}{suffix}")
+            col.write(f"p75: {p75}{suffix}")
             col.write(f"n: {d.get('n', 0)}")
 
 
@@ -126,9 +137,7 @@ def _goalie_display_name(row: pd.Series) -> str:
     return f"Player {row.get('playerId', '?')}"
 
 
-def _team_goalies(
-    gs: pd.DataFrame, team_abbrev: str
-) -> tuple[list[str], list[int]]:
+def _team_goalies(gs: pd.DataFrame, team_abbrev: str) -> tuple[list[str], list[int]]:
     """Return (display_names, player_ids) for a team, sorted by starts desc."""
     team = gs[gs["teamAbbrevs"].str.contains(team_abbrev, na=False)].sort_values(
         "gamesStarted", ascending=False
@@ -224,9 +233,7 @@ def main() -> None:
     with st.spinner("Loading goalie game log…"):
         goalie_log = load_goalie_log(player_id, season)
 
-    with st.spinner(
-        "Loading league-wide game logs (first run may take a minute)…"
-    ):
+    with st.spinner("Loading league-wide game logs (first run may take a minute)…"):
         all_logs = load_all_goalie_logs(season)
 
     if goalie_log.empty:
@@ -263,17 +270,13 @@ def main() -> None:
 
     # Box plot: Last 5 vs full season
     if "gamesStarted" in goalie_log.columns:
-        started = goalie_log[goalie_log["gamesStarted"] == 1].sort_values(
-            "gameDate"
-        )
+        started = goalie_log[goalie_log["gamesStarted"] == 1].sort_values("gameDate")
     else:
         started = goalie_log.sort_values("gameDate")
 
     _empty = pd.Series(dtype=float)
     season_pct = (
-        started["savePctg"].dropna()
-        if "savePctg" in started.columns
-        else _empty
+        started["savePctg"].dropna() if "savePctg" in started.columns else _empty
     )
     last5_pct = (
         started.tail(5)["savePctg"].dropna()
@@ -286,9 +289,7 @@ def main() -> None:
         fig.add_trace(
             go.Box(y=season_pct.tolist(), name="Full Season", boxpoints="all")
         )
-        fig.add_trace(
-            go.Box(y=last5_pct.tolist(), name="Last 5", boxpoints="all")
-        )
+        fig.add_trace(go.Box(y=last5_pct.tolist(), name="Last 5", boxpoints="all"))
         fig.update_layout(
             yaxis_title="Save %",
             height=350,
@@ -311,11 +312,13 @@ def main() -> None:
             )
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    # ── Stat 5: Goal Rate ─────────────────────────────────────────────────────
+    # ── Stat 5: Opponent Goal Conversion % ───────────────────────────────────
     st.divider()
-    st.subheader("Stat 5: Goal Rate (% of shots → goal)")
-    st.caption("Goals allowed per shot on goal (raw count: GA / SA)")
-    stat_block(report["goal_rate"])
+    st.subheader("Stat 5: Opponent Goal Conversion %")
+    st.caption(
+        f"% of {opponent_team}'s shots on goal that become goals (goals / SOG per game)"
+    )
+    stat_block(report["opponent_goal_rate"], pct=True)
 
 
 main()

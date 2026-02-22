@@ -12,7 +12,7 @@ Stats produced:
   2. SOG/gm the opposing team averages        (last N + season: median, p25, p75)
   3. Goalie save %                            (last N + season: median, p25, p75)
   4. SOG allowed & saves vs this opponent     (per game, most recent first)
-  5. % of SOG resulting in a goal             (last N + season: median, p25, p75)
+  5. Opponent goal conversion % (goals / SOG)   (last N + season: median, p25, p75)
 """
 
 import pandas as pd
@@ -195,8 +195,13 @@ def vs_opponent_history(
         DataFrame sorted by gameDate descending.
     """
     cols = [
-        "gameDate", "homeRoadFlag", "decision",
-        "shotsAgainst", "goalsAgainst", "savePctg", "toi",
+        "gameDate",
+        "homeRoadFlag",
+        "decision",
+        "shotsAgainst",
+        "goalsAgainst",
+        "savePctg",
+        "toi",
     ]
     available_cols = [c for c in cols if c in goalie_log.columns]
 
@@ -209,34 +214,46 @@ def vs_opponent_history(
 
 
 # ---------------------------------------------------------------------------
-# Stat 5: % of SOG that result in a goal for the opposing team
+# Stat 5: Opponent goal conversion % (goals / SOG per game)
 # ---------------------------------------------------------------------------
 
 
-def goal_rate_stats(
-    goalie_log: pd.DataFrame,
+def opponent_goal_rate_stats(
+    all_goalie_logs: pd.DataFrame,
+    opponent_abbrev: str,
     last_n: int = 5,
 ) -> dict[str, dict[str, float]]:
-    """Per-game fraction of shots against that become goals (goals / shots).
+    """Per-game fraction of shots that become goals for the opposing team.
 
-    This is the complement of save % computed from raw counts rather than
-    the reported savePctg, which handles edge cases (e.g. shootout goals)
-    more consistently.
-
-    Args:
-        goalie_log: Single goalie's game log DataFrame.
-        last_n: Number of most recent games for the "last N" window.
+    Uses the same game-log rows as opponent_sog_stats: rows where
+    opponentAbbrev == opponent_abbrev. shotsAgainst and goalsAgainst in those
+    rows represent the opponent's offensive output.
 
     Returns:
         {"season": {median, p25, p75, n}, "last_n": {median, p25, p75, n}}
+        Values are fractions (0-1); callers multiply by 100 for display.
     """
-    started = goalie_log[goalie_log["gamesStarted"] == 1].sort_values("gameDate")
+    opponent_games = all_goalie_logs[
+        all_goalie_logs["opponentAbbrev"] == opponent_abbrev
+    ].copy()
 
-    # Avoid division by zero; games with 0 shots are excluded
-    with_shots = started[started["shotsAgainst"] > 0].copy()
-    with_shots["goal_rate"] = (
-        with_shots["goalsAgainst"] / with_shots["shotsAgainst"]
+    if opponent_games.empty:
+        empty = percentile_summary(pd.Series([], dtype=float))
+        return {"season": empty, "last_n": empty}
+
+    per_game = (
+        opponent_games.groupby("gameId")
+        .agg(
+            shotsFor=("shotsAgainst", "sum"),
+            goalsFor=("goalsAgainst", "sum"),
+            gameDate=("gameDate", "max"),
+        )
+        .reset_index()
+        .sort_values("gameDate")
     )
+
+    with_shots = per_game[per_game["shotsFor"] > 0].copy()
+    with_shots["goal_rate"] = with_shots["goalsFor"] / with_shots["shotsFor"]
 
     rates = with_shots["goal_rate"]
     return {
@@ -270,7 +287,7 @@ def goalie_report(
             "opponent_sog":   {"season": {...}, "last_n": {...}},  # stat 2
             "save_pct":       {"season": {...}, "last_n": {...}},  # stat 3
             "vs_opponent":    DataFrame,                           # stat 4
-            "goal_rate":      {"season": {...}, "last_n": {...}},  # stat 5
+            "opponent_goal_rate": {"season": {...}, "last_n": {...}},  # stat 5
         }
     """
     return {
@@ -278,5 +295,7 @@ def goalie_report(
         "opponent_sog": opponent_sog_stats(all_goalie_logs, opponent_abbrev, last_n),
         "save_pct": save_pct_stats(goalie_log, last_n),
         "vs_opponent": vs_opponent_history(goalie_log, opponent_abbrev),
-        "goal_rate": goal_rate_stats(goalie_log, last_n),
+        "opponent_goal_rate": opponent_goal_rate_stats(
+            all_goalie_logs, opponent_abbrev, last_n
+        ),
     }

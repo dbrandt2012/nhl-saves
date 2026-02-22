@@ -27,10 +27,38 @@ CACHE_TTL_SECONDS = 3600
 
 # All 32 NHL teams for the 2024-25 season and beyond (ARI → UTA from 2024-25)
 NHL_TEAMS = [
-    "ANA", "BOS", "BUF", "CGY", "CAR", "CHI", "COL", "CBJ", "DAL", "DET",
-    "EDM", "FLA", "LAK", "MIN", "MTL", "NSH", "NJD", "NYI", "NYR", "OTT",
-    "PHI", "PIT", "SEA", "SJS", "STL", "TBL", "TOR", "VAN", "VGK", "WSH",
-    "WPG", "UTA",
+    "ANA",
+    "BOS",
+    "BUF",
+    "CGY",
+    "CAR",
+    "CHI",
+    "COL",
+    "CBJ",
+    "DAL",
+    "DET",
+    "EDM",
+    "FLA",
+    "LAK",
+    "MIN",
+    "MTL",
+    "NSH",
+    "NJD",
+    "NYI",
+    "NYR",
+    "OTT",
+    "PHI",
+    "PIT",
+    "SEA",
+    "SJS",
+    "STL",
+    "TBL",
+    "TOR",
+    "VAN",
+    "VGK",
+    "WSH",
+    "WPG",
+    "UTA",
 ]
 
 _client: NHLClient | None = None
@@ -103,14 +131,16 @@ def fetch_schedule(
     rows = []
     for day in raw.get("gameWeek", []):
         for game in day.get("games", []):
-            rows.append({
-                "gameId": game.get("id"),
-                "gameDate": day.get("date"),
-                "homeTeam": game.get("homeTeam", {}).get("abbrev"),
-                "awayTeam": game.get("awayTeam", {}).get("abbrev"),
-                "venue": game.get("venue", {}).get("default"),
-                "gameState": game.get("gameState"),
-            })
+            rows.append(
+                {
+                    "gameId": game.get("id"),
+                    "gameDate": day.get("date"),
+                    "homeTeam": game.get("homeTeam", {}).get("abbrev"),
+                    "awayTeam": game.get("awayTeam", {}).get("abbrev"),
+                    "venue": game.get("venue", {}).get("default"),
+                    "gameState": game.get("gameState"),
+                }
+            )
 
     df = pd.DataFrame(rows)
     df.to_parquet(path, index=False)
@@ -254,8 +284,7 @@ def build_goalie_game_logs(
         player_ids = bulk["playerId"].dropna().astype(int).tolist()
 
     frames = [
-        fetch_goalie_game_log(pid, season, game_type, client=c)
-        for pid in player_ids
+        fetch_goalie_game_log(pid, season, game_type, client=c) for pid in player_ids
     ]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
@@ -303,9 +332,8 @@ def build_goalie_features(
     for w in windows:
         for stat in ("savePctg", "shotsAgainst"):
             col = f"{stat}_rolling_{w}g"
-            df[col] = (
-                df.groupby("player_id")[stat]
-                .transform(lambda s, w=w: s.rolling(w, min_periods=1).mean())
+            df[col] = df.groupby("player_id")[stat].transform(
+                lambda s, w=w: s.rolling(w, min_periods=1).mean()
             )
 
     out_path = PROCESSED_DIR / "goalie_features" / f"{season}_{game_type}.parquet"
@@ -352,23 +380,21 @@ def fetch_next_games(
                 if gid in seen_ids:
                     continue
                 seen_ids.add(gid)
-                rows.append({
-                    "gameId": gid,
-                    "gameDate": game_date,
-                    "homeTeam": game.get("homeTeam", {}).get("abbrev"),
-                    "awayTeam": game.get("awayTeam", {}).get("abbrev"),
-                    "venue": game.get("venue", {}).get("default"),
-                    "gameState": game.get("gameState"),
-                })
+                rows.append(
+                    {
+                        "gameId": gid,
+                        "gameDate": game_date,
+                        "homeTeam": game.get("homeTeam", {}).get("abbrev"),
+                        "awayTeam": game.get("awayTeam", {}).get("abbrev"),
+                        "venue": game.get("venue", {}).get("default"),
+                        "gameState": game.get("gameState"),
+                    }
+                )
         except Exception:
             continue
 
     _EMPTY_COLS = ["gameId", "gameDate", "homeTeam", "awayTeam", "venue", "gameState"]
-    df = (
-        pd.DataFrame(rows)
-        if rows
-        else pd.DataFrame(columns=_EMPTY_COLS)
-    )
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=_EMPTY_COLS)
     if not df.empty:
         df = df.sort_values("gameDate").reset_index(drop=True)
 

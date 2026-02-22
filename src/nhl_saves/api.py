@@ -36,9 +36,7 @@ class NHLClient:
     # Roster
     # ------------------------------------------------------------------
 
-    def get_team_roster(
-        self, team_abbrev: str, season: str
-    ) -> dict[str, list[dict]]:
+    def get_team_roster(self, team_abbrev: str, season: str) -> dict[str, list[dict]]:
         """Return team roster split into goalies and skaters.
 
         Args:
@@ -142,9 +140,7 @@ class NHLClient:
     # Team stats
     # ------------------------------------------------------------------
 
-    def get_team_stats(
-        self, team_abbrev: str, season: str, game_type: int = 2
-    ) -> dict:
+    def get_team_stats(self, team_abbrev: str, season: str, game_type: int = 2) -> dict:
         """Return team-level stats including shots-for/against per game.
 
         Useful fields: shotsForPerGame, shotsAgainstPerGame, goalsFor,
