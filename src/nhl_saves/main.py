@@ -101,18 +101,34 @@ def stat_block(
             f"n={n}",
         )
 
-    with st.expander("Percentile detail"):
-        detail_cols = st.columns(len(label_map))
-        for col, (key, window_label) in zip(detail_cols, label_map.items()):
-            d = stat_dict.get(key, {})
-            col.write(f"**{window_label}**")
-            p25 = _fmt(d.get("p25", float("nan")) * multiplier, display_decimals)
-            med = _fmt(d.get("median", float("nan")) * multiplier, display_decimals)
-            p75 = _fmt(d.get("p75", float("nan")) * multiplier, display_decimals)
-            col.write(f"p25: {p25}{suffix}")
-            col.write(f"Median: {med}{suffix}")
-            col.write(f"p75: {p75}{suffix}")
-            col.write(f"n: {d.get('n', 0)}")
+    pct_cols = st.columns(len(label_map))
+    for col, (key, _) in zip(pct_cols, label_map.items()):
+        d = stat_dict.get(key, {})
+        p25 = _fmt(d.get("p25", float("nan")) * multiplier, display_decimals)
+        p75 = _fmt(d.get("p75", float("nan")) * multiplier, display_decimals)
+        col.caption(f"25th: {p25}{suffix} · 75th: {p75}{suffix}")
+
+
+def box_plot(
+    traces: list[tuple[str, pd.Series]],
+    y_label: str,
+    height: int = 260,
+    pct: bool = False,
+) -> None:
+    """Compact Plotly box plot. Each trace is (name, Series)."""
+    multiplier = 100 if pct else 1
+    fig = go.Figure()
+    for name, series in traces:
+        clean = series.dropna() * multiplier
+        if not clean.empty:
+            fig.add_trace(go.Box(y=clean.tolist(), name=name, boxpoints="all"))
+    fig.update_layout(
+        yaxis_title=y_label,
+        height=height,
+        margin={"t": 10, "b": 10, "l": 10, "r": 10},
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _game_label(row: pd.Series) -> str:
@@ -227,7 +243,7 @@ def main() -> None:
     except Exception:
         date_str = game_date
     venue_part = f" · {venue}" if venue else ""
-    st.subheader(f"{date_str}{venue_part}")
+    st.caption(f"{date_str}{venue_part}")
 
     # ── Load data ─────────────────────────────────────────────────────────────
     with st.spinner("Loading goalie game log…"):
@@ -243,65 +259,144 @@ def main() -> None:
     # Compute all five stats
     report = goalie_report(goalie_log, all_logs, opponent_team)
 
-    # ── Stat 1: SOG Allowed ───────────────────────────────────────────────────
-    st.divider()
-    st.subheader("Stat 1: Shots on Goal Allowed")
-    st.caption("Shots on goal conceded per game — team view vs. this goalie's starts")
-
-    col_team, col_goalie = st.columns(2)
-    with col_team:
-        st.write(f"**Team ({goalie_team}) — all goalies**")
-        stat_block(report["sog_allowed"]["team"], decimals=1)
-    with col_goalie:
-        st.write(f"**{goalie_name} starts only**")
-        stat_block(report["sog_allowed"]["goalie"], decimals=1)
-
-    # ── Stat 2: Opponent SOG ──────────────────────────────────────────────────
-    st.divider()
-    st.subheader("Stat 2: Opponent Shots on Goal")
-    st.caption(f"Shots {opponent_team} generates per game (offensive output)")
-    stat_block(report["opponent_sog"], decimals=1)
-
-    # ── Stat 3: Save Percentage ───────────────────────────────────────────────
-    st.divider()
-    st.subheader("Stat 3: Save Percentage")
-    st.caption(f"{goalie_name}'s save % distribution")
-    stat_block(report["save_pct"])
-
-    # Box plot: Last 5 vs full season
+    # ── Raw series for box plots ──────────────────────────────────────────────
     if "gamesStarted" in goalie_log.columns:
         started = goalie_log[goalie_log["gamesStarted"] == 1].sort_values("gameDate")
     else:
         started = goalie_log.sort_values("gameDate")
 
-    _empty = pd.Series(dtype=float)
-    season_pct = (
-        started["savePctg"].dropna() if "savePctg" in started.columns else _empty
+    _team_df = (
+        all_logs[all_logs["teamAbbrev"] == goalie_team]
+        .groupby("gameId")
+        .agg(sog=("shotsAgainst", "sum"), gameDate=("gameDate", "max"))
+        .sort_values("gameDate")
     )
-    last5_pct = (
-        started.tail(5)["savePctg"].dropna()
-        if "savePctg" in started.columns
-        else _empty
+    _opp_df = (
+        all_logs[all_logs["opponentAbbrev"] == opponent_team]
+        .groupby("gameId")
+        .agg(
+            sog=("shotsAgainst", "sum"),
+            goals=("goalsAgainst", "sum"),
+            gameDate=("gameDate", "max"),
+        )
+        .sort_values("gameDate")
     )
+    _opp_with_shots = _opp_df[_opp_df["sog"] > 0].copy()
+    _opp_with_shots["goal_rate"] = _opp_with_shots["goals"] / _opp_with_shots["sog"]
 
-    if not season_pct.empty:
-        fig = go.Figure()
-        fig.add_trace(
-            go.Box(y=season_pct.tolist(), name="Full Season", boxpoints="all")
-        )
-        fig.add_trace(go.Box(y=last5_pct.tolist(), name="Last 5", boxpoints="all"))
-        fig.update_layout(
-            yaxis_title="Save %",
-            height=350,
-            margin={"t": 20, "b": 20},
-            showlegend=True,
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    # ── Quick Summary ─────────────────────────────────────────────────────────
+    st.markdown("#### Quick Summary")
 
-    # ── Stat 4: History vs Opponent ───────────────────────────────────────────
-    st.divider()
-    st.subheader(f"Stat 4: vs {opponent_team} This Season")
+    def _summary_group(col, label, stat_dict, decimals=3, pct=False):
+        mult = 100 if pct else 1
+        dp = 1 if pct else decimals
+        sfx = "%" if pct else ""
+        col.markdown(f"**{label}**")
+        c1, c2 = col.columns(2)
+        c1.metric("Last 5", f"{_fmt(stat_dict['last_n']['median'] * mult, dp)}{sfx}")
+        season_val = _fmt(stat_dict["season"]["median"] * mult, dp)
+        c2.metric("Full Season", f"{season_val}{sfx}")
+
+    sc = st.columns(5)
+    _summary_group(sc[0], "Save %", report["save_pct"], pct=True)
+    _summary_group(sc[1], "SOG Allowed", report["sog_allowed"]["goalie"], decimals=1)
+    _summary_group(
+        sc[2], f"Opp SOG ({opponent_team})", report["opponent_sog"], decimals=1
+    )
+    _summary_group(sc[3], "Opp Goal Conv%", report["opponent_goal_rate"], pct=True)
+
     vs_df = report["vs_opponent"]
+    with sc[4]:
+        st.markdown(f"**vs {opponent_team}**")
+        if vs_df.empty:
+            st.metric("Record (W–L–OT)", "—")
+        else:
+            dec = vs_df.get("decision", pd.Series(dtype=str))
+            w = (dec == "W").sum()
+            losses = (dec == "L").sum()
+            ot = (~dec.isin(["W", "L"])).sum()
+            st.metric("Record (W–L–OT)", f"{w}–{losses}–{ot}")
+
+    # ── Stat 1: SOG Allowed ───────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Shots on Goal Allowed")
+    st.caption("Shots on goal conceded per game")
+
+    st.write(f"**Team ({goalie_team}) — all goalies**")
+    c_met, c_box = st.columns([2, 3])
+    with c_met:
+        stat_block(report["sog_allowed"]["team"], decimals=1)
+    with c_box:
+        box_plot(
+            [("Full Season", _team_df["sog"]), ("Last 5", _team_df.tail(5)["sog"])],
+            "SOG/gm",
+        )
+
+    st.write(f"**{goalie_name} starts only**")
+    c_met, c_box = st.columns([2, 3])
+    with c_met:
+        stat_block(report["sog_allowed"]["goalie"], decimals=1)
+    with c_box:
+        box_plot(
+            [
+                ("Full Season", started["shotsAgainst"]),
+                ("Last 5", started.tail(5)["shotsAgainst"]),
+            ],
+            "SOG/gm",
+        )
+
+    # ── Stat 2: Opponent SOG ──────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Opponent Shots on Goal")
+    st.caption(f"Shots {opponent_team} generates per game (offensive output)")
+    c_met, c_box = st.columns([2, 3])
+    with c_met:
+        stat_block(report["opponent_sog"], decimals=1)
+    with c_box:
+        box_plot(
+            [("Full Season", _opp_df["sog"]), ("Last 5", _opp_df.tail(5)["sog"])],
+            "SOG/gm",
+        )
+
+    # ── Stat 3: Save Percentage ───────────────────────────────────────────────
+    st.divider()
+    st.subheader("Save Percentage")
+    st.caption(f"{goalie_name}'s save % distribution")
+    c_met, c_box = st.columns([2, 3])
+    with c_met:
+        stat_block(report["save_pct"], pct=True)
+    with c_box:
+        box_plot(
+            [
+                ("Full Season", started["savePctg"]),
+                ("Last 5", started.tail(5)["savePctg"]),
+            ],
+            "Save %",
+            pct=True,
+        )
+
+    # ── Stat 4: Opponent Goal Conversion % ───────────────────────────────────
+    st.divider()
+    st.subheader("Opponent Goal Conversion %")
+    st.caption(
+        f"% of {opponent_team}'s shots on goal that become goals (goals / SOG per game)"
+    )
+    c_met, c_box = st.columns([2, 3])
+    with c_met:
+        stat_block(report["opponent_goal_rate"], pct=True)
+    with c_box:
+        box_plot(
+            [
+                ("Full Season", _opp_with_shots["goal_rate"]),
+                ("Last 5", _opp_with_shots.tail(5)["goal_rate"]),
+            ],
+            "Goal Conv%",
+            pct=True,
+        )
+
+    # ── Stat 5: History vs Opponent ───────────────────────────────────────────
+    st.divider()
+    st.subheader(f"vs {opponent_team} This Season")
     if vs_df.empty:
         st.info(f"No previous meetings vs {opponent_team} this season.")
     else:
@@ -311,14 +406,6 @@ def main() -> None:
                 lambda x: f"{x:.3f}" if pd.notna(x) else "N/A"
             )
         st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-    # ── Stat 5: Opponent Goal Conversion % ───────────────────────────────────
-    st.divider()
-    st.subheader("Stat 5: Opponent Goal Conversion %")
-    st.caption(
-        f"% of {opponent_team}'s shots on goal that become goals (goals / SOG per game)"
-    )
-    stat_block(report["opponent_goal_rate"], pct=True)
 
 
 main()
