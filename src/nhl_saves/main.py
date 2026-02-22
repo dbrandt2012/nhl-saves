@@ -298,8 +298,8 @@ def main() -> None:
         c2.metric("Full Season", f"{season_val}{sfx}")
 
     sc = st.columns(5)
-    _summary_group(sc[0], "Save %", report["save_pct"], pct=True)
-    _summary_group(sc[1], "SOG Allowed", report["sog_allowed"]["goalie"], decimals=1)
+    _summary_group(sc[0], "SOG Allowed", report["sog_allowed"]["goalie"], decimals=1)
+    _summary_group(sc[1], "Save %", report["save_pct"], pct=True)
     _summary_group(
         sc[2], f"Opp SOG ({opponent_team})", report["opponent_sog"], decimals=1
     )
@@ -345,20 +345,7 @@ def main() -> None:
             "SOG/gm",
         )
 
-    # ── Stat 2: Opponent SOG ──────────────────────────────────────────────────
-    st.divider()
-    st.subheader("Opponent Shots on Goal")
-    st.caption(f"Shots {opponent_team} generates per game (offensive output)")
-    c_met, c_box = st.columns([2, 3])
-    with c_met:
-        stat_block(report["opponent_sog"], decimals=1)
-    with c_box:
-        box_plot(
-            [("Full Season", _opp_df["sog"]), ("Last 5", _opp_df.tail(5)["sog"])],
-            "SOG/gm",
-        )
-
-    # ── Stat 3: Save Percentage ───────────────────────────────────────────────
+    # ── Stat 2: Save Percentage ───────────────────────────────────────────────
     st.divider()
     st.subheader("Save Percentage")
     st.caption(f"{goalie_name}'s save % distribution")
@@ -373,6 +360,19 @@ def main() -> None:
             ],
             "Save %",
             pct=True,
+        )
+
+    # ── Stat 3: Opponent SOG ──────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Opponent Shots on Goal")
+    st.caption(f"Shots {opponent_team} generates per game (offensive output)")
+    c_met, c_box = st.columns([2, 3])
+    with c_met:
+        stat_block(report["opponent_sog"], decimals=1)
+    with c_box:
+        box_plot(
+            [("Full Season", _opp_df["sog"]), ("Last 5", _opp_df.tail(5)["sog"])],
+            "SOG/gm",
         )
 
     # ── Stat 4: Opponent Goal Conversion % ───────────────────────────────────
