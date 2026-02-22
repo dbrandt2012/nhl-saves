@@ -161,3 +161,17 @@ class NHLClient:
         """
         url = f"{self.WEB_BASE}/club-stats/{team_abbrev}/{season}/{game_type}"
         return self._get(url)
+
+    def get_team_season_schedule(self, team_abbrev: str, season: str) -> dict:
+        """Return full season schedule for a team.
+
+        Args:
+            team_abbrev: Three-letter team code, e.g. "TOR".
+            season: Season in YYYYYYYY format, e.g. "20242025".
+
+        Returns:
+            Raw dict with a "games" list; each game has id, gameType,
+            gameDate, homeTeam, awayTeam, venue, gameState.
+        """
+        url = f"{self.WEB_BASE}/club-schedule-season/{team_abbrev}/{season}"
+        return self._get(url)

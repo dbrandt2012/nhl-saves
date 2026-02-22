@@ -14,6 +14,7 @@ Processed layout (data/processed/):
 
 import time
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,14 @@ from nhl_saves.api import NHLClient
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
 CACHE_TTL_SECONDS = 3600
+
+# All 32 NHL teams for the 2024-25 season and beyond (ARI → UTA from 2024-25)
+NHL_TEAMS = [
+    "ANA", "BOS", "BUF", "CGY", "CAR", "CHI", "COL", "CBJ", "DAL", "DET",
+    "EDM", "FLA", "LAK", "MIN", "MTL", "NSH", "NJD", "NYI", "NYR", "OTT",
+    "PHI", "PIT", "SEA", "SJS", "STL", "TBL", "TOR", "VAN", "VGK", "WSH",
+    "WPG", "UTA",
+]
 
 _client: NHLClient | None = None
 
@@ -302,4 +311,66 @@ def build_goalie_features(
     out_path = PROCESSED_DIR / "goalie_features" / f"{season}_{game_type}.parquet"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out_path, index=False)
+    return df
+
+
+def fetch_next_games(
+    season: str,
+    game_type: int = 2,
+    *,
+    client: NHLClient | None = None,
+    ttl: int = CACHE_TTL_SECONDS,
+) -> pd.DataFrame:
+    """Return a deduplicated DataFrame of upcoming regular-season games.
+
+    Fetches each NHL team's full season schedule and collects future games.
+    Results are deduplicated by gameId and sorted by gameDate.
+
+    Schema: gameId, gameDate, homeTeam, awayTeam, venue, gameState.
+    Cached at: data/raw/next_games/{season}_{game_type}.parquet
+    """
+    c = client or _get_client()
+    today = date.today().isoformat()
+    path = _raw_path("next_games", f"{season}_{game_type}.parquet")
+
+    if _is_fresh(path, ttl):
+        df = pd.read_parquet(path)
+        return df[df["gameDate"] >= today].reset_index(drop=True)
+
+    rows: list[dict] = []
+    seen_ids: set = set()
+    for team in NHL_TEAMS:
+        try:
+            data = c.get_team_season_schedule(team, season)
+            for game in data.get("games", []):
+                if game.get("gameType") != game_type:
+                    continue
+                game_date = game.get("gameDate", "")
+                if game_date < today:
+                    continue
+                gid = game.get("id")
+                if gid in seen_ids:
+                    continue
+                seen_ids.add(gid)
+                rows.append({
+                    "gameId": gid,
+                    "gameDate": game_date,
+                    "homeTeam": game.get("homeTeam", {}).get("abbrev"),
+                    "awayTeam": game.get("awayTeam", {}).get("abbrev"),
+                    "venue": game.get("venue", {}).get("default"),
+                    "gameState": game.get("gameState"),
+                })
+        except Exception:
+            continue
+
+    _EMPTY_COLS = ["gameId", "gameDate", "homeTeam", "awayTeam", "venue", "gameState"]
+    df = (
+        pd.DataFrame(rows)
+        if rows
+        else pd.DataFrame(columns=_EMPTY_COLS)
+    )
+    if not df.empty:
+        df = df.sort_values("gameDate").reset_index(drop=True)
+
+    df.to_parquet(path, index=False)
     return df

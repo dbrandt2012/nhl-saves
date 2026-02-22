@@ -369,8 +369,15 @@ def test_goalie_report_stat_dicts_have_expected_keys():
     goalie_log = _season_log()
     all_logs = goalie_log.copy()
     result = goalie_report(goalie_log, all_logs, "BOS")
-    for key in ("sog_allowed", "opponent_sog", "save_pct", "goal_rate"):
+
+    # sog_allowed has a team/goalie split; check both sub-keys
+    for split in ("team", "goalie"):
         for window in ("season", "last_n"):
-            assert "median" in result[key][window]
-            assert "p25" in result[key][window]
-            assert "p75" in result[key][window]
+            d = result["sog_allowed"][split][window]
+            assert "median" in d and "p25" in d and "p75" in d
+
+    # All other stat dicts have season/last_n directly
+    for key in ("opponent_sog", "save_pct", "goal_rate"):
+        for window in ("season", "last_n"):
+            d = result[key][window]
+            assert "median" in d and "p25" in d and "p75" in d
