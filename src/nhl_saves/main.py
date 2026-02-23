@@ -440,14 +440,11 @@ def main() -> None:
         st.warning("No games found for today.")
         return
 
-    # Keep only today's NHL games (gameWeek can span multiple days;
-    # CAN/USA appear in non-NHL international games)
-    today_str = date.today().isoformat()
+    # Filter out non-NHL teams (CAN, USA, etc. appear in international games
+    # that can show up in the gameWeek response)
     nhl_set = set(NHL_TEAMS)
     games_df = games_df[
-        (games_df["gameDate"] == today_str)
-        & games_df["homeTeam"].isin(nhl_set)
-        & games_df["awayTeam"].isin(nhl_set)
+        games_df["homeTeam"].isin(nhl_set) & games_df["awayTeam"].isin(nhl_set)
     ].reset_index(drop=True)
 
     team_order = build_team_order(games_df)
@@ -464,9 +461,7 @@ def main() -> None:
     # ── Master team table (always visible) ────────────────────────────────────
     n_games = len(games_df)
     plural = "s" if n_games != 1 else ""
-    st.caption(
-        f"Season {SEASON[:4]}–{SEASON[4:]} · {n_games} game{plural} today ({today_str})"
-    )
+    st.caption(f"Season {SEASON[:4]}–{SEASON[4:]} · {n_games} upcoming game{plural}")
 
     team_sel = st.dataframe(
         team_df,
