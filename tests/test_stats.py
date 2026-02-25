@@ -100,7 +100,7 @@ def test_percentile_summary_empty():
 def test_range_summary_basic():
     s = pd.Series([10.0, 20.0, 30.0, 40.0, 50.0])
     result = range_summary(s)
-    assert result["median"] == pytest.approx(30.0)
+    assert result["mean"] == pytest.approx(30.0)
     assert result["min"] == pytest.approx(10.0)
     assert result["max"] == pytest.approx(50.0)
     assert result["n"] == 5
@@ -117,7 +117,7 @@ def test_range_summary_drops_nan():
 def test_range_summary_empty():
     result = range_summary(pd.Series([], dtype=float))
     assert result["n"] == 0
-    assert math.isnan(result["median"])
+    assert math.isnan(result["mean"])
     assert math.isnan(result["min"])
     assert math.isnan(result["max"])
 
@@ -217,8 +217,8 @@ def test_sog_allowed_goalie_last_n_uses_most_recent():
         ]
     )
     result = sog_allowed_stats(log, log, last_n=3)
-    # Games 4, 5, 6 → shots 40, 50, 60 → median 50
-    assert result["goalie"]["last_n"]["median"] == pytest.approx(50.0)
+    # Games 4, 5, 6 → shots 40, 50, 60 → mean 50
+    assert result["goalie"]["last_n"]["mean"] == pytest.approx(50.0)
 
 
 def test_sog_allowed_team_aggregates_all_goalies():
@@ -286,8 +286,8 @@ def test_sog_allowed_team_sums_multi_goalie_game():
 def test_sog_allowed_team_last_n_uses_most_recent():
     all_logs = _all_logs_for_team("TOR", [10, 20, 30, 40, 50, 60])
     result = sog_allowed_stats(all_logs.head(1), all_logs, last_n=3)
-    # Most recent 3 team games: 40, 50, 60 → median 50
-    assert result["team"]["last_n"]["median"] == pytest.approx(50.0)
+    # Most recent 3 team games: 40, 50, 60 → mean 50
+    assert result["team"]["last_n"]["mean"] == pytest.approx(50.0)
 
 
 # ---------------------------------------------------------------------------
@@ -326,8 +326,8 @@ def test_opponent_sog_season_median():
 def test_opponent_sog_last_n_uses_most_recent():
     logs = _make_all_logs_for_opponent("BOS", [20, 25, 30, 35, 40])
     result = opponent_sog_stats(logs, "BOS", last_n=3)
-    # Most recent 3 games: shots 30, 35, 40 → median 35
-    assert result["last_n"]["median"] == pytest.approx(35.0)
+    # Most recent 3 games: shots 30, 35, 40 → mean 35
+    assert result["last_n"]["mean"] == pytest.approx(35.0)
     assert result["last_n"]["n"] == 3
 
 
@@ -409,8 +409,8 @@ def test_save_pct_last_n():
     )
     result = save_pct_stats(log, last_n=3)
     assert result["last_n"]["n"] == 3
-    # Most recent 3: indices 5,6,7 → 0.930, 0.940, 0.950 → median 0.940 → ×100 = 94.0
-    assert result["last_n"]["median"] == pytest.approx(94.0)
+    # Most recent 3: indices 5,6,7 → 0.930, 0.940, 0.950 → mean 0.940 → ×100 = 94.0
+    assert result["last_n"]["mean"] == pytest.approx(94.0)
 
 
 def test_save_pct_last_n_has_range_keys():
@@ -530,9 +530,9 @@ def test_opponent_goal_rate_last_n():
         ]
     )
     result = opponent_goal_rate_stats(logs, "BOS", last_n=3)
-    # Last 3 games: i=4,5,6 → rates 4/30, 5/30, 6/30 → median 5/30 → ×100 ≈ 16.667%
+    # Last 3 games: i=4,5,6 → rates 4/30, 5/30, 6/30 → mean 5/30 → ×100 ≈ 16.667%
     assert result["last_n"]["n"] == 3
-    assert result["last_n"]["median"] == pytest.approx(5 / 30 * 100)
+    assert result["last_n"]["mean"] == pytest.approx(5 / 30 * 100)
 
 
 def test_opponent_goal_rate_last_n_has_range_keys():
@@ -704,8 +704,8 @@ def test_team_sog_stats_season():
 def test_team_sog_stats_last_n():
     all_logs = _all_logs_for_team("TOR", [10, 20, 30, 40, 50, 60])
     result = team_sog_stats(all_logs, "TOR", last_n=3)
-    # Most recent 3: 40, 50, 60 → median 50
-    assert result["last_n"]["median"] == pytest.approx(50.0)
+    # Most recent 3: 40, 50, 60 → mean 50
+    assert result["last_n"]["mean"] == pytest.approx(50.0)
     assert result["last_n"]["n"] == 3
 
 
@@ -795,9 +795,9 @@ def test_team_save_pct_stats_last_n():
     logs = pd.DataFrame(rows)
     result = team_save_pct_stats(logs, "TOR", last_n=3)
     # Last 3: i=4,5,6 → (30-4)/30, (30-5)/30, (30-6)/30 × 100 = 86.67, 83.33, 80.0
-    # median = 83.33%
+    # mean = 83.33%
     assert result["last_n"]["n"] == 3
-    assert result["last_n"]["median"] == pytest.approx((30 - 5) / 30 * 100)
+    assert result["last_n"]["mean"] == pytest.approx((30 - 5) / 30 * 100)
 
 
 def test_team_save_pct_stats_unknown_team():
@@ -868,7 +868,7 @@ def test_goalie_report_stat_dicts_have_expected_keys():
         d_season = result["sog_allowed"][split]["season"]
         d_last_n = result["sog_allowed"][split]["last_n"]
         assert "median" in d_season and "p25" in d_season and "p75" in d_season
-        assert "median" in d_last_n and "min" in d_last_n and "max" in d_last_n
+        assert "mean" in d_last_n and "min" in d_last_n and "max" in d_last_n
 
     # save_pct and opponent_sog/goal_rate: season has p25/p75, last_n has min/max
     for key in ("save_pct", "opponent_sog", "opponent_goal_rate"):

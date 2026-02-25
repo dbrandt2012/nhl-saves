@@ -39,17 +39,17 @@ def percentile_summary(series: pd.Series) -> dict[str, float]:
 
 
 def range_summary(series: pd.Series) -> dict[str, float]:
-    """Return median, min, max, and n for a numeric series (NaNs dropped).
+    """Return mean, min, max, and n for a numeric series (NaNs dropped).
 
-    Used for last-N game windows where the full range is more informative
-    than percentiles over a small sample.
+    Used for last-N game windows where mean gives a cleaner summary
+    than median over a small sample.
     """
     clean = series.dropna()
     if clean.empty:
         nan = float("nan")
-        return {"median": nan, "min": nan, "max": nan, "n": 0}
+        return {"mean": nan, "min": nan, "max": nan, "n": 0}
     return {
-        "median": float(clean.median()),
+        "mean": float(clean.mean()),
         "min": float(clean.min()),
         "max": float(clean.max()),
         "n": int(len(clean)),
@@ -240,6 +240,7 @@ def vs_opponent_history(
         DataFrame sorted by gameDate descending.
     """
     cols = [
+        "gameId",
         "gameDate",
         "homeRoadFlag",
         "decision",
