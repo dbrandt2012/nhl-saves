@@ -260,6 +260,64 @@ def fetch_goalie_stats(
     return df
 
 
+def fetch_team_goalie_ids(
+    team_abbrev: str,
+    season: str,
+    game_type: int = 2,
+    *,
+    client: NHLClient | None = None,
+    ttl: int = CACHE_TTL_SECONDS,
+) -> list[dict]:
+    """Return goalie player_id and name for a team from bulk goalie stats.
+
+    Uses the already-cached fetch_goalie_stats() result (no extra API calls).
+    Filters by teamAbbrev and returns a list of dicts with player_id and name.
+
+    Args:
+        team_abbrev: Three-letter team code (e.g. "TOR").
+        season: Season string in YYYYYYYY format (e.g. "20242025").
+        game_type: 2 = regular season.
+
+    Returns:
+        [{"player_id": int, "name": str}, ...]  sorted by gamesStarted desc.
+    """
+    c = client or _get_client()
+    bulk = fetch_goalie_stats(season, game_type, client=c, ttl=ttl)
+
+    if bulk.empty:
+        return []
+
+    # Filter to this team
+    team_col = "teamAbbrevs" if "teamAbbrevs" in bulk.columns else "teamAbbrev"
+    team_rows = bulk[bulk[team_col].str.contains(team_abbrev, na=False)].copy()
+
+    if team_rows.empty:
+        return []
+
+    # Sort by starts descending so starter appears first
+    if "gamesStarted" in team_rows.columns:
+        team_rows = team_rows.sort_values("gamesStarted", ascending=False)
+
+    results = []
+    for _, row in team_rows.iterrows():
+        pid = row.get("playerId")
+        if pid is None or (hasattr(pid, "__class__") and str(pid) == "nan"):
+            continue
+        # Resolve display name
+        name = None
+        for col in ("goalieFullName", "skaterFullName", "playerName"):
+            if col in row.index and pd.notna(row.get(col)):
+                name = str(row[col])
+                break
+        if name is None:
+            first = row.get("firstName", "") or ""
+            last = row.get("lastName", "") or ""
+            name = f"{first} {last}".strip() or f"Player {pid}"
+        results.append({"player_id": int(pid), "name": name})
+
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Processed layer
 # ---------------------------------------------------------------------------
