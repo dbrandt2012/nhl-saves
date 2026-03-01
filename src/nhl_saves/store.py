@@ -329,12 +329,19 @@ def build_goalie_game_logs(
     player_ids: list[int] | None = None,
     *,
     client: NHLClient | None = None,
+    ttl: int = CACHE_TTL_SECONDS,
 ) -> pd.DataFrame:
     """Combine per-game logs for all goalies in a season into one DataFrame.
 
     If player_ids is None, derives them from fetch_goalie_stats() (playerId column).
+    Returns the cached processed file if it is fresh; otherwise re-fetches.
     Written to: data/processed/goalie_game_logs/{season}_{game_type}.parquet
     """
+    out_path = PROCESSED_DIR / "goalie_game_logs" / f"{season}_{game_type}.parquet"
+
+    if player_ids is None and _is_fresh(out_path, ttl):
+        return pd.read_parquet(out_path)
+
     c = client or _get_client()
 
     if player_ids is None:
@@ -346,7 +353,6 @@ def build_goalie_game_logs(
     ]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    out_path = PROCESSED_DIR / "goalie_game_logs" / f"{season}_{game_type}.parquet"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out_path, index=False)
     return df

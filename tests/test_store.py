@@ -176,6 +176,7 @@ def test_build_game_logs_combines():
     df2 = _make_goalie_df(1002, n=3)
 
     with (
+        patch("nhl_saves.store._is_fresh", return_value=False),
         patch("nhl_saves.store.fetch_goalie_stats") as mock_bulk,
         patch("nhl_saves.store.fetch_goalie_game_log", side_effect=[df1, df2]),
         patch("pandas.DataFrame.to_parquet"),

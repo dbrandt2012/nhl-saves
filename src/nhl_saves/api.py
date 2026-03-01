@@ -5,7 +5,13 @@ Wraps two public NHL APIs (no auth required):
   - api.nhle.com/stats/rest/en — bulk goalie/skater stats with filtering
 """
 
+import time
+
 import requests
+from requests.exceptions import ConnectionError as RequestsConnectionError
+
+_MIN_REQUEST_INTERVAL = 0.5  # seconds between API calls
+_RETRY_DELAYS = [2, 5, 10]  # backoff seconds for each retry attempt
 
 
 class NHLClient:
@@ -14,11 +20,33 @@ class NHLClient:
 
     def __init__(self) -> None:
         self._session = requests.Session()
+        self._last_request_time: float = 0.0
 
     def _get(self, url: str, params: dict | None = None) -> dict:
-        response = self._session.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
+        last = getattr(self, "_last_request_time", 0.0)
+        elapsed = time.monotonic() - last
+        if elapsed < _MIN_REQUEST_INTERVAL:
+            time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
+        self._last_request_time = time.monotonic()
+
+        last_exc: Exception = RuntimeError("no attempts made")
+        for attempt, backoff in enumerate([0] + _RETRY_DELAYS):
+            if backoff:
+                time.sleep(backoff)
+            try:
+                response = self._session.get(url, params=params)
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", backoff or 5))
+                    time.sleep(retry_after)
+                    last_exc = requests.HTTPError(response=response)
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except RequestsConnectionError as exc:
+                last_exc = exc
+                continue
+
+        raise last_exc
 
     # ------------------------------------------------------------------
     # Schedule
